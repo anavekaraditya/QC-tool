@@ -1,0 +1,15 @@
+{
+  "name": "qc-audit-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local control panel for running Codex QC audits.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "playwright": "^1.49.1",
+    "pngjs": "^7.0.0"
+  }
+}

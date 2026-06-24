@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>QC Audit Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Geist+Sans:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <!-- popover="manual" is REQUIRED for momentum-swipe support -->
+    <div class="Drawer" id="drawer" popover="manual">
+      <div class="Drawer-scroller">
+        <aside class="Drawer-sheet" tabindex="-1">
+          <div class="drawer-header">
+            <h3>Audit Runs</h3>
+            <button class="icon-button close-drawer-button" id="drawer-close" type="button" aria-label="Close menu">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div id="jobsList" class="jobs-list"></div>
+        </aside>
+      </div>
+    </div>
+
+    <main class="workspace">
+      <header class="appbar">
+        <div class="appbar-left">
+          <button class="icon-button menu-button" id="drawer-open" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="drawer">
+            <span></span><span></span><span></span>
+          </button>
+          <div class="crumbs">
+            <span>QC Audit</span>
+            <span>/</span>
+            <strong>Website quality review</strong>
+          </div>
+        </div>
+        <div class="mode-switch" aria-label="Audit mode">
+          <span>Agentic QC</span>
+          <span class="is-selected">Design parity</span>
+        </div>
+        <div class="appbar-actions">
+          <button class="ghost" id="refreshJobs" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 16h5v5"></path></svg>
+            <span>Refresh</span>
+          </button>
+          <a class="primary-link" href="#setup">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
+            <span>New audit</span>
+          </a>
+        </div>
+      </header>
+
+      <section class="studio">
+        <aside class="inspector" id="setup">
+          <form id="auditForm">
+            <div class="inspector-head">
+              <div>
+                <p class="eyebrow">Setup</p>
+                <h1>Run QC audit</h1>
+              </div>
+              <span class="run-state" id="formNote">Ready</span>
+            </div>
+
+            <div class="field-stack">
+              <label>
+                <span>Website URL <span class="info-icon has-tooltip" data-tooltip="Enter the URL to audit (e.g. https://example.com)"></span></span>
+                <input name="url" type="url" placeholder="https://adityaanavekar.design/" required>
+              </label>
+              <label>
+                <span>Run name <span class="info-icon has-tooltip" data-tooltip="Optional name to label this audit run in history"></span></span>
+                <input name="title" type="text" placeholder="Portfolio QA">
+              </label>
+            </div>
+
+            <div class="divider-label">Target viewports <span class="info-icon has-tooltip" data-tooltip="Breakpoints that will be audited and captured"></span></div>
+            <div class="checks">
+              <label><input name="desktop-enabled" type="checkbox" checked> Desktop</label>
+              <label><input name="tablet-enabled" type="checkbox" checked> Tablet</label>
+              <label><input name="mobile-enabled" type="checkbox" checked> Mobile</label>
+            </div>
+
+            <details class="advanced-settings">
+              <summary class="advanced-toggle">
+                <span>Advanced settings</span>
+                <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </summary>
+              <div class="advanced-content">
+                <div class="divider-label">Figma reference <span class="info-icon has-tooltip" data-tooltip="Attach design frames to run pixel parity checks"></span></div>
+                <p class="helper">Frame URLs identify desktop/mobile intent. Add exported PNG paths below for pixel diff.</p>
+                <div class="field-stack">
+                  <label>
+                    <span>Desktop frame URL</span>
+                    <input name="figma-desktop" type="text" placeholder="https://www.figma.com/design/...?...node-id=...">
+                  </label>
+                  <label>
+                    <span>Tablet frame URL</span>
+                    <input name="figma-tablet" type="text" placeholder="Optional">
+                  </label>
+                  <label>
+                    <span>Mobile frame URL</span>
+                    <input name="figma-mobile" type="text" placeholder="https://www.figma.com/design/...?...node-id=...">
+                  </label>
+                </div>
+                <div class="notice">
+                  <strong>Visual diff needs PNG paths.</strong>
+                  <span>Use Figma export or Codex/Figma MCP capture, then paste each local PNG path into its breakpoint row.</span>
+                </div>
+
+                <div class="divider-label">Browsers <span class="info-icon has-tooltip" data-tooltip="Local web browser engines to execute the page check inside"></span></div>
+                <div class="checks compact" data-group="browsers">
+                  <label><input type="checkbox" value="chromium"> Chromium</label>
+                  <label><input type="checkbox" value="firefox"> Firefox</label>
+                  <label><input type="checkbox" value="webkit"> WebKit</label>
+                  <label><input type="checkbox" value="chrome" checked> Chrome</label>
+                  <label><input type="checkbox" value="brave"> Brave</label>
+                  <label><input type="checkbox" value="opera"> Opera</label>
+                  <label><input type="checkbox" value="edge"> Edge</label>
+                </div>
+
+                <div class="divider-label">Viewport dimensions & references <span class="info-icon has-tooltip" data-tooltip="Override capture dimensions and supply baseline PNG paths"></span></div>
+                <div class="breakpoints">
+                  <div class="breakpoint-details">
+                    <h5>Desktop viewport</h5>
+                    <div class="breakpoint-row-inputs">
+                      <input name="desktop-width" type="number" value="1440" placeholder="Width" aria-label="Desktop viewport width">
+                      <input name="desktop-height" type="number" value="1000" placeholder="Height" aria-label="Desktop viewport height">
+                      <input name="desktop-image" type="text" placeholder="Desktop reference image path" aria-label="Desktop reference PNG path">
+                    </div>
+                  </div>
+                  <div class="breakpoint-details">
+                    <h5>Tablet viewport</h5>
+                    <div class="breakpoint-row-inputs">
+                      <input name="tablet-width" type="number" value="834" placeholder="Width" aria-label="Tablet viewport width">
+                      <input name="tablet-height" type="number" value="1112" placeholder="Height" aria-label="Tablet viewport height">
+                      <input name="tablet-image" type="text" placeholder="Tablet reference image path" aria-label="Tablet reference PNG path">
+                    </div>
+                  </div>
+                  <div class="breakpoint-details">
+                    <h5>Mobile viewport</h5>
+                    <div class="breakpoint-row-inputs">
+                      <input name="mobile-width" type="number" value="390" placeholder="Width" aria-label="Mobile viewport width">
+                      <input name="mobile-height" type="number" value="844" placeholder="Height" aria-label="Mobile viewport height">
+                      <input name="mobile-image" type="text" placeholder="Mobile reference image path" aria-label="Mobile reference PNG path">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="divider-label">Checks <span class="info-icon has-tooltip" data-tooltip="Select which user interactions the quality agent should inspect"></span></div>
+                <div class="checks compact" data-group="interactions">
+                  <label><input type="checkbox" value="hover" checked> Hover</label>
+                  <label><input type="checkbox" value="scroll" checked> Scroll</label>
+                  <label><input type="checkbox" value="focus" checked> Focus</label>
+                  <label><input type="checkbox" value="forms" checked> Forms</label>
+                  <label><input type="checkbox" value="click" checked> Click</label>
+                  <label><input type="checkbox" value="sticky" checked> Sticky</label>
+                </div>
+
+                <div class="divider-label">Routes <span class="info-icon has-tooltip" data-tooltip="Specify routes to check or enable spider-crawling links"></span></div>
+                <label>
+                  <span>Route list</span>
+                  <textarea name="routes" rows="3" placeholder="/&#10;/about&#10;/work"></textarea>
+                </label>
+                <div class="route-row">
+                  <label class="toggle"><input name="discoverRoutes" type="checkbox"> Discover links</label>
+                  <label class="toggle"><input name="sitemap" type="checkbox"> Sitemap</label>
+                  <label class="small-field">
+                    <span>Max</span>
+                    <input name="maxRoutes" type="number" value="6">
+                  </label>
+                </div>
+              </div>
+            </details>
+
+            <button class="run-button" type="submit">
+              <span>Run QC audit</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
+            </button>
+          </form>
+        </aside>
+
+        <section class="preview-zone">
+          <div class="preview-toolbar">
+            <div>
+              <p class="eyebrow">Evidence preview</p>
+              <h2 id="previewTitle">No audit selected</h2>
+            </div>
+            <div class="preview-toolbar-actions">
+              <div id="artifactLinks" class="artifact-links"></div>
+              <div class="preview-modes" id="previewModes" aria-label="Preview mode"></div>
+              <div class="summary-pills" id="summaryPills">
+                <span>Score --</span>
+                <span>0 findings</span>
+              </div>
+            </div>
+          </div>
+          <div class="preview-canvas" id="previewCanvas">
+            <div class="empty-preview">
+              <strong>Issue evidence will appear here</strong>
+              <span>Run an audit, then select a finding to preview the cropped highlighted screenshot.</span>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="bottom-rail" id="jobs">
+        <div class="rail-head">
+          <div>
+            <p class="eyebrow">Run timeline</p>
+            <h2>Issue Timeline</h2>
+          </div>
+          <div id="reviewFilters" class="review-filters" aria-label="Finding filters"></div>
+          <div id="matrixPills" class="matrix-pills"></div>
+        </div>
+        <div id="findingRail" class="finding-rail"></div>
+      </section>
+
+      <div class="status-card" id="health">Checking runner...</div>
+    </main>
+
+    <!-- Right-side Issue Details popover drawer -->
+    <div class="Detail-Drawer" id="detail-drawer" popover="manual">
+      <div class="drawer-header">
+        <h3>Issue Details</h3>
+        <button class="icon-button close-drawer-button" id="detail-drawer-close" type="button" aria-label="Close details">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="detailDrawerContent" class="detail-drawer-content"></div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

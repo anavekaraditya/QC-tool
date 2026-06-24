@@ -1,0 +1,6 @@
+node_modules/
+data/audits/
+.DS_Store
+npm-debug.log*
+qc-audit-runs/
+qc-audit-ui-runs/
