@@ -50,6 +50,10 @@ function payloadFromForm() {
   return {
     url: value("url"),
     title: value("title"),
+    mode: value("mode"),
+    geminiApiKey: value("geminiApiKey"),
+    geminiModel: value("geminiModel"),
+    agentGoal: value("agentGoal"),
     browsers: checkedValues("browsers"),
     interactions: checkedValues("interactions"),
     routes: value("routes"),
@@ -913,4 +917,35 @@ function closeDetailDrawer() {
 
 if (detailDrawerClose) {
   detailDrawerClose.addEventListener("click", closeDetailDrawer);
+}
+
+// Mode Switch Button Handler
+const modeSwitch = document.getElementById("modeSwitch");
+const auditModeInput = document.getElementById("auditModeInput");
+if (modeSwitch && auditModeInput) {
+  const modeButtons = modeSwitch.querySelectorAll(".mode-btn");
+  const designOnlySecs = document.querySelectorAll(".design-only");
+  const agenticOnlySecs = document.querySelectorAll(".agentic-only");
+
+  modeButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.mode;
+      
+      // Update toggle class
+      modeButtons.forEach((b) => b.classList.remove("is-selected"));
+      btn.classList.add("is-selected");
+
+      // Update hidden input
+      auditModeInput.value = mode;
+
+      // Toggle form sections visibility
+      if (mode === "design") {
+        designOnlySecs.forEach((el) => { el.style.display = ""; });
+        agenticOnlySecs.forEach((el) => { el.style.display = "none"; });
+      } else {
+        designOnlySecs.forEach((el) => { el.style.display = "none"; });
+        agenticOnlySecs.forEach((el) => { el.style.display = ""; });
+      }
+    });
+  });
 }

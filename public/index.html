@@ -37,9 +37,9 @@
             <strong>Website quality review</strong>
           </div>
         </div>
-        <div class="mode-switch" aria-label="Audit mode">
-          <span>Agentic QC</span>
-          <span class="is-selected">Design parity</span>
+        <div class="mode-switch" aria-label="Audit mode" id="modeSwitch">
+          <button class="mode-btn" type="button" data-mode="agentic">Agentic QC</button>
+          <button class="mode-btn is-selected" type="button" data-mode="design">Design parity</button>
         </div>
         <div class="appbar-actions">
           <button class="ghost" id="refreshJobs" type="button">
@@ -56,6 +56,7 @@
       <section class="studio">
         <aside class="inspector" id="setup">
           <form id="auditForm">
+            <input type="hidden" name="mode" id="auditModeInput" value="design">
             <div class="inspector-head">
               <div>
                 <p class="eyebrow">Setup</p>
@@ -88,25 +89,53 @@
                 <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
               </summary>
               <div class="advanced-content">
-                <div class="divider-label">Figma reference <span class="info-icon has-tooltip" data-tooltip="Attach design frames to run pixel parity checks"></span></div>
-                <p class="helper">Frame URLs identify desktop/mobile intent. Add exported PNG paths below for pixel diff.</p>
-                <div class="field-stack">
-                  <label>
-                    <span>Desktop frame URL</span>
-                    <input name="figma-desktop" type="text" placeholder="https://www.figma.com/design/...?...node-id=...">
-                  </label>
-                  <label>
-                    <span>Tablet frame URL</span>
-                    <input name="figma-tablet" type="text" placeholder="Optional">
-                  </label>
-                  <label>
-                    <span>Mobile frame URL</span>
-                    <input name="figma-mobile" type="text" placeholder="https://www.figma.com/design/...?...node-id=...">
-                  </label>
+                <!-- DESIGN ONLY -->
+                <div class="design-only">
+                  <div class="divider-label">Figma reference <span class="info-icon has-tooltip" data-tooltip="Attach design frames to run pixel parity checks"></span></div>
+                  <p class="helper">Frame URLs identify desktop/mobile intent. Add exported PNG paths below for pixel diff.</p>
+                  <div class="field-stack">
+                    <label>
+                      <span>Desktop frame URL</span>
+                      <input name="figma-desktop" type="text" placeholder="https://www.figma.com/design/...?...node-id=...">
+                    </label>
+                    <label>
+                      <span>Tablet frame URL</span>
+                      <input name="figma-tablet" type="text" placeholder="Optional">
+                    </label>
+                    <label>
+                      <span>Mobile frame URL</span>
+                      <input name="figma-mobile" type="text" placeholder="https://www.figma.com/design/...?...node-id=...">
+                    </label>
+                  </div>
+                  <div class="notice">
+                    <strong>Visual diff needs PNG paths.</strong>
+                    <span>Use Figma export or Codex/Figma MCP capture, then paste each local PNG path into its breakpoint row.</span>
+                  </div>
                 </div>
-                <div class="notice">
-                  <strong>Visual diff needs PNG paths.</strong>
-                  <span>Use Figma export or Codex/Figma MCP capture, then paste each local PNG path into its breakpoint row.</span>
+
+                <!-- AGENTIC ONLY -->
+                <div class="agentic-only" style="display: none;">
+                  <div class="divider-label">Gemini API Settings <span class="info-icon has-tooltip" data-tooltip="Configure Gemini for multimodal layout evaluation"></span></div>
+                  <div class="field-stack">
+                    <label>
+                      <span>Gemini API Key</span>
+                      <input name="geminiApiKey" type="password" placeholder="Enter your Gemini API key (AIzaSy...)">
+                    </label>
+                    <label>
+                      <span>Model</span>
+                      <select name="geminiModel">
+                        <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (Recommended)</option>
+                        <option value="gemini-2.5-pro">Gemini 2.5 Pro (Accurate)</option>
+                        <option value="gemini-3.5-flash">Gemini 3.5 Flash (Latest)</option>
+                        <option value="gemini-flash-latest">Gemini Flash (Auto-latest)</option>
+                        <option value="gemini-pro-latest">Gemini Pro (Auto-latest)</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Audit Goal / Prompt</span>
+                      <textarea name="agentGoal" rows="3" placeholder="Analyze the screenshot of the webpage and identify visual bugs, styling errors, text clipping, contrast issues, or layout alignment flaws."></textarea>
+                    </label>
+                  </div>
                 </div>
 
                 <div class="divider-label">Browsers <span class="info-icon has-tooltip" data-tooltip="Local web browser engines to execute the page check inside"></span></div>

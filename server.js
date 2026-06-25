@@ -110,6 +110,10 @@ function buildConfig(input, jobId, outDir) {
     outDir,
     browsers,
     interactions,
+    mode: input.mode || "design",
+    geminiApiKey: input.geminiApiKey || "",
+    geminiModel: input.geminiModel || "gemini-1.5-flash",
+    agentGoal: input.agentGoal || "",
     reviewMode: input.reviewMode || "evidence-first",
     confidenceThreshold: input.confidenceThreshold || "low",
     stateCapture: input.stateCapture || {

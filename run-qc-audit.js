@@ -2280,77 +2280,260 @@ async function auditEnvironment(playwright, config, runId, browserName, viewport
     const steps = ["Open URL", `Set viewport to ${viewport.width}x${viewport.height}`, "Wait for network idle", "Capture screenshot"];
     const runtime = await collectRuntimeMetrics(page);
 
-    if (viewport.figmaReferenceImage) {
-      const figmaImagePath = path.resolve(viewport.figmaReferenceImage);
-      if (fs.existsSync(figmaImagePath)) {
-        diffRel = path.join("diffs", `${slug(browserName)}-${slug(viewport.key)}-${slug(route.id)}.json`);
-        const diffAbs = path.join(outDir, diffRel);
-        const diff = comparePngs(figmaImagePath, screenshotAbs, config.diffThreshold || 40);
-        fs.writeFileSync(diffAbs, JSON.stringify(diff, null, 2));
-        const mismatchRatio = diff.pixelDiff?.mismatchRatio || 0;
-        if (!diff.sizeMatches || mismatchRatio > (config.allowedMismatchRatio || 0.08)) {
-          const visualClass = classifyVisualDiff(diff);
+    if (config.mode === "agentic") {
+      if (!config.geminiApiKey) {
+        addFinding(findings, {
+          title: "Gemini API Key missing",
+          fingerprint: `gemini:missing-api-key:${route.id}:${viewport.key}`,
+          severity: "high",
+          category: "agentic qc",
+          source: "gemini-audit",
+          affectedEnvironments: [env],
+          evidence: baseEvidence(),
+          expected: "A Gemini API Key must be supplied in settings to run agentic visual audits.",
+          actual: "No Gemini API Key was found in the configuration settings.",
+          suggestedFix: "Provide a valid Gemini API Key (beginning with AIzaSy) in the setup advanced settings.",
+          reproduction: reproduction(config, runId, viewport, userAgent, browserName, ["Inspect audit configuration"], route),
+        });
+      } else {
+        try {
+          const screenshotBase64 = fs.readFileSync(screenshotAbs, { encoding: "base64" });
+          const apiModel = config.geminiModel || "gemini-1.5-flash";
+          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:generateContent?key=${config.geminiApiKey}`;
+          
+          const systemPrompt = `You are an expert Quality Assurance Engineer. Analyze the screenshot of the webpage for the viewport "${viewport.label}" (${viewport.width}x${viewport.height}px) on browser "${browserName}".
+Your goal: ${config.agentGoal || "Analyze the screenshot of the webpage and identify visual bugs, styling errors, text clipping, contrast issues, or layout alignment flaws."}
+
+Find visual, layout, structural, and aesthetic issues. Be specific and identify exact locations, sections, elements, or text clippings where they occur.
+For each visual/layout finding, please identify the bounding box coordinates of the affected area on the screenshot. The coordinates (ymin, xmin, ymax, xmax) must be integers in the range [0, 1000] representing the percentage from the top/left/bottom/right edges (e.g., ymin=100 means 10% from the top).`;
+
+          const responseSchema = {
+            type: "OBJECT",
+            properties: {
+              findings: {
+                type: "ARRAY",
+                items: {
+                  type: "OBJECT",
+                  properties: {
+                    title: { type: "STRING" },
+                    severity: { 
+                      type: "STRING", 
+                      enum: ["critical", "high", "medium", "low"] 
+                    },
+                    category: { type: "STRING" },
+                    expected: { type: "STRING" },
+                    actual: { type: "STRING" },
+                    suggestedFix: { type: "STRING" },
+                    location: {
+                      type: "OBJECT",
+                      properties: {
+                        section: { type: "STRING" },
+                        selector: { type: "STRING" },
+                        textSnippet: { type: "STRING" }
+                      },
+                      required: ["section"]
+                    },
+                    boundingBox: {
+                      type: "OBJECT",
+                      properties: {
+                        ymin: { type: "INTEGER", description: "Top coordinate of the bounding box, normalized from 0 to 1000" },
+                        xmin: { type: "INTEGER", description: "Left coordinate of the bounding box, normalized from 0 to 1000" },
+                        ymax: { type: "INTEGER", description: "Bottom coordinate of the bounding box, normalized from 0 to 1000" },
+                        xmax: { type: "INTEGER", description: "Right coordinate of the bounding box, normalized from 0 to 1000" }
+                      },
+                      required: ["ymin", "xmin", "ymax", "xmax"]
+                    }
+                  },
+                  required: ["title", "severity", "category", "expected", "actual", "suggestedFix"]
+                }
+              }
+            },
+            required: ["findings"]
+          };
+
+          const response = await fetch(apiUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    { text: systemPrompt },
+                    {
+                      inlineData: {
+                        mimeType: "image/png",
+                        data: screenshotBase64
+                      }
+                    }
+                  ]
+                }
+              ],
+              generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: responseSchema
+              }
+            })
+          });
+
+          if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`Gemini API returned status ${response.status}: ${errText}`);
+          }
+
+          const data = await response.json();
+          const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!jsonText) {
+            throw new Error("Empty response from Gemini API");
+          }
+
+          const parsed = JSON.parse(jsonText);
+          const geminiFindings = parsed.findings || [];
+
+          let imageWidth = viewport.width || 1440;
+          let imageHeight = viewport.height || 1000;
+          try {
+            const size = readPngSize(screenshotAbs);
+            imageWidth = size.width;
+            imageHeight = size.height;
+          } catch (e) {}
+
+          for (const item of geminiFindings) {
+            const examples = [];
+            if (item.boundingBox) {
+              const ymin = Math.max(0, Math.min(1000, item.boundingBox.ymin));
+              const xmin = Math.max(0, Math.min(1000, item.boundingBox.xmin));
+              const ymax = Math.max(ymin, Math.min(1000, item.boundingBox.ymax));
+              const xmax = Math.max(xmin, Math.min(1000, item.boundingBox.xmax));
+
+              const x = Math.round((xmin / 1000) * imageWidth);
+              const y = Math.round((ymin / 1000) * imageHeight);
+              const width = Math.max(1, Math.round(((xmax - xmin) / 1000) * imageWidth));
+              const height = Math.max(1, Math.round(((ymax - ymin) / 1000) * imageHeight));
+
+              examples.push({
+                rect: { x, y, width, height },
+                label: item.title,
+                location: {
+                  sectionSelector: item.location?.selector || null,
+                  selector: item.location?.selector || null,
+                  textSnippet: item.location?.textSnippet || null
+                }
+              });
+            }
+
+            addFinding(findings, {
+              title: item.title,
+              fingerprint: `gemini:finding:${route.id}:${viewport.key}:${slug(item.title)}`,
+              severity: item.severity || "medium",
+              category: item.category || "visual",
+              source: "gemini-audit",
+              state: "settled",
+              confidence: "high",
+              affectedEnvironments: [env],
+              evidence: baseEvidence(),
+              location: {
+                section: item.location?.section || "Page",
+                selector: item.location?.selector || "",
+                textSnippet: item.location?.textSnippet || ""
+              },
+              expected: item.expected || "The webpage elements should be visually correct and follow layout guidelines.",
+              actual: item.actual || "Visual or layout discrepancy identified by visual QA audit.",
+              suggestedFix: item.suggestedFix || "Review layout code, styling definitions, and content alignment.",
+              examples: examples,
+              reproduction: reproduction(config, runId, viewport, userAgent, browserName, steps, route),
+            });
+          }
+        } catch (err) {
           addFinding(findings, {
-            title: `Figma parity ${visualClass.type}`,
-            fingerprint: `figma:visual-diff:${route.id}:${viewport.key}`,
-            severity: mismatchRatio > 0.25 || Math.abs(diff.dimensionDelta.width) > 80 ? "high" : "medium",
-            category: "design parity",
-            source: "figma-parity",
-            state: "settled",
-            confidence: diff.pixelDiffAvailable ? "medium" : "low",
+            title: "Gemini visual QA audit failed",
+            fingerprint: `gemini:audit-error:${route.id}:${viewport.key}`,
+            severity: "high",
+            category: "agentic qc",
+            source: "gemini-audit",
             affectedEnvironments: [env],
             evidence: baseEvidence(),
-            designReference: {
-              frameUrl: viewport.figmaReference || null,
-              image: viewport.figmaReferenceImage || null,
-              breakpoint: viewport.key,
-            },
-            measuredDelta: {
-              type: visualClass.type,
-              mismatchRatio,
-              dimensionDelta: diff.dimensionDelta,
-              mismatchBounds: diff.pixelDiff?.mismatchBounds || null,
-            },
-            expected: "The live screenshot should match the exported Figma reference within the configured tolerance.",
-            actual: diff.pixelDiffAvailable
-              ? `${visualClass.summary} Mismatch ratio is ${(mismatchRatio * 100).toFixed(2)}%; dimension delta is ${diff.dimensionDelta.width}x${diff.dimensionDelta.height}px.`
-              : `Dimension delta is ${diff.dimensionDelta.width}x${diff.dimensionDelta.height}px; pixel diff unavailable because pngjs was not found.`,
-            suggestedFix: "Compare the Figma reference and live screenshot, then adjust layout, spacing, typography, imagery, and responsive rules for this breakpoint.",
-            examples: [diff.pixelDiff?.mismatchBounds || diff.dimensionDelta],
-            reproduction: reproduction(config, runId, viewport, userAgent, browserName, steps, route),
+            expected: "Gemini API should analyze screenshot and return layout findings.",
+            actual: `API execution failed: ${err.message}`,
+            suggestedFix: "Check your internet connection, Gemini API key, rate limits, quota, and selected model configuration.",
+            reproduction: reproduction(config, runId, viewport, userAgent, browserName, ["Check Gemini API configurations"], route),
           });
         }
-      } else {
+      }
+    } else {
+      if (viewport.figmaReferenceImage) {
+        const figmaImagePath = path.resolve(viewport.figmaReferenceImage);
+        if (fs.existsSync(figmaImagePath)) {
+          diffRel = path.join("diffs", `${slug(browserName)}-${slug(viewport.key)}-${slug(route.id)}.json`);
+          const diffAbs = path.join(outDir, diffRel);
+          const diff = comparePngs(figmaImagePath, screenshotAbs, config.diffThreshold || 40);
+          fs.writeFileSync(diffAbs, JSON.stringify(diff, null, 2));
+          const mismatchRatio = diff.pixelDiff?.mismatchRatio || 0;
+          if (!diff.sizeMatches || mismatchRatio > (config.allowedMismatchRatio || 0.08)) {
+            const visualClass = classifyVisualDiff(diff);
+            addFinding(findings, {
+              title: `Figma parity ${visualClass.type}`,
+              fingerprint: `figma:visual-diff:${route.id}:${viewport.key}`,
+              severity: mismatchRatio > 0.25 || Math.abs(diff.dimensionDelta.width) > 80 ? "high" : "medium",
+              category: "design parity",
+              source: "figma-parity",
+              state: "settled",
+              confidence: diff.pixelDiffAvailable ? "medium" : "low",
+              affectedEnvironments: [env],
+              evidence: baseEvidence(),
+              designReference: {
+                frameUrl: viewport.figmaReference || null,
+                image: viewport.figmaReferenceImage || null,
+                breakpoint: viewport.key,
+              },
+              measuredDelta: {
+                type: visualClass.type,
+                mismatchRatio,
+                dimensionDelta: diff.dimensionDelta,
+                mismatchBounds: diff.pixelDiff?.mismatchBounds || null,
+              },
+              expected: "The live screenshot should match the exported Figma reference within the configured tolerance.",
+              actual: diff.pixelDiffAvailable
+                ? `${visualClass.summary} Mismatch ratio is ${(mismatchRatio * 100).toFixed(2)}%; dimension delta is ${diff.dimensionDelta.width}x${diff.dimensionDelta.height}px.`
+                : `Dimension delta is ${diff.dimensionDelta.width}x${diff.dimensionDelta.height}px; pixel diff unavailable because pngjs was not found.`,
+              suggestedFix: "Compare the Figma reference and live screenshot, then adjust layout, spacing, typography, imagery, and responsive rules for this breakpoint.",
+              examples: [diff.pixelDiff?.mismatchBounds || diff.dimensionDelta],
+              reproduction: reproduction(config, runId, viewport, userAgent, browserName, steps, route),
+            });
+          }
+        } else {
+          addFinding(findings, {
+            title: "Figma reference image path is missing",
+            fingerprint: `figma:missing-reference-image:${route.id}:${viewport.key}`,
+            severity: "low",
+            category: "design parity",
+            affectedEnvironments: [env],
+            evidence: baseEvidence(),
+            expected: "Configured Figma reference image paths should exist before visual parity comparison runs.",
+            actual: `Reference image was not found at ${figmaImagePath}.`,
+            suggestedFix: "Export the Figma frame screenshot and update figmaReferenceImage for this breakpoint.",
+            examples: [{ figmaReferenceImage: figmaImagePath }],
+            reproduction: reproduction(config, runId, viewport, userAgent, browserName, ["Inspect audit configuration"], route),
+          });
+        }
+      }
+
+      if (viewport.figmaReference && !viewport.figmaReferenceImage) {
         addFinding(findings, {
-          title: "Figma reference image path is missing",
-          fingerprint: `figma:missing-reference-image:${route.id}:${viewport.key}`,
+          title: "Figma frame URL provided without reference image",
+          fingerprint: `figma:reference-url-without-image:${route.id}:${viewport.key}`,
           severity: "low",
           category: "design parity",
           affectedEnvironments: [env],
           evidence: baseEvidence(),
-          expected: "Configured Figma reference image paths should exist before visual parity comparison runs.",
-          actual: `Reference image was not found at ${figmaImagePath}.`,
-          suggestedFix: "Export the Figma frame screenshot and update figmaReferenceImage for this breakpoint.",
-          examples: [{ figmaReferenceImage: figmaImagePath }],
+          expected: "A Figma frame URL should be paired with an exported frame PNG when pixel-level visual parity is required.",
+          actual: `A Figma frame URL was provided for ${viewport.label}, but no figmaReferenceImage path was available for screenshot diffing.`,
+          suggestedFix: "Export/capture the Figma frame to a PNG with Figma MCP or Figma export, then add that local PNG path to the matching breakpoint reference image field.",
+          examples: [{ figmaReference: viewport.figmaReference, breakpoint: viewport.key }],
           reproduction: reproduction(config, runId, viewport, userAgent, browserName, ["Inspect audit configuration"], route),
         });
       }
-    }
-
-    if (viewport.figmaReference && !viewport.figmaReferenceImage) {
-      addFinding(findings, {
-        title: "Figma frame URL provided without reference image",
-        fingerprint: `figma:reference-url-without-image:${route.id}:${viewport.key}`,
-        severity: "low",
-        category: "design parity",
-        affectedEnvironments: [env],
-        evidence: baseEvidence(),
-        expected: "A Figma frame URL should be paired with an exported frame PNG when pixel-level visual parity is required.",
-        actual: `A Figma frame URL was provided for ${viewport.label}, but no figmaReferenceImage path was available for screenshot diffing.`,
-        suggestedFix: "Export/capture the Figma frame to a PNG with Figma MCP or Figma export, then add that local PNG path to the matching breakpoint reference image field.",
-        examples: [{ figmaReference: viewport.figmaReference, breakpoint: viewport.key }],
-        reproduction: reproduction(config, runId, viewport, userAgent, browserName, ["Inspect audit configuration"], route),
-      });
     }
 
     if (!response || response.status() >= 400) {
@@ -2469,7 +2652,7 @@ async function auditEnvironment(playwright, config, runId, browserName, viewport
       });
     }
 
-    if (!viewport.figmaReference) {
+    if (config.mode !== "agentic" && !viewport.figmaReference) {
       addFinding(findings, {
         title: "Figma reference missing for breakpoint",
         fingerprint: `figma:missing-reference:${route.id}:${viewport.key}`,
